@@ -1,4 +1,6 @@
-import { useState } from 'react'
+
+import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import '../App.css'
 
 function Signup() {
@@ -7,13 +9,20 @@ function Signup() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState('')
+  const [isSuccess, setIsSuccess] = useState(false)
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     setMessage('')
+    setIsSuccess(false)
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (
+      !name.trim() ||
+      !email.trim() ||
+      !password ||
+      !confirmPassword
+    ) {
       setMessage('Please fill in all fields.')
       return
     }
@@ -29,12 +38,12 @@ function Signup() {
     }
 
     setMessage('Account details are valid!')
+    setIsSuccess(true)
   }
 
   return (
     <main className="auth-page">
       <div className="auth-card">
-
         <div className="auth-logo">
           <span className="logo-icon">✦</span>
           <span>IntellMeet</span>
@@ -47,9 +56,7 @@ function Signup() {
         </p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
-
           <label htmlFor="name">Full Name</label>
-
           <input
             id="name"
             type="text"
@@ -59,7 +66,6 @@ function Signup() {
           />
 
           <label htmlFor="email">Email</label>
-
           <input
             id="email"
             type="email"
@@ -69,7 +75,6 @@ function Signup() {
           />
 
           <label htmlFor="password">Password</label>
-
           <input
             id="password"
             type="password"
@@ -81,7 +86,6 @@ function Signup() {
           <label htmlFor="confirmPassword">
             Confirm Password
           </label>
-
           <input
             id="confirmPassword"
             type="password"
@@ -93,7 +97,7 @@ function Signup() {
           />
 
           {message && (
-            <p className="form-error">
+            <p className={isSuccess ? 'form-success' : 'form-error'}>
               {message}
             </p>
           )}
@@ -101,14 +105,12 @@ function Signup() {
           <button type="submit" className="primary-btn">
             Create Account
           </button>
-
         </form>
 
         <p className="auth-footer">
           Already have an account?{' '}
-          <a href="/login">Log in</a>
+          <Link to="/login">Log in</Link>
         </p>
-
       </div>
     </main>
   )
