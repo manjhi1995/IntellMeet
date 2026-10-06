@@ -1,5 +1,5 @@
-
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
+import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import '../App.css'
 
@@ -8,8 +8,19 @@ function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [isSuccess, setIsSuccess] = useState(false)
+
+  const passwordStrength =
+    password.length === 0
+      ? ''
+      : password.length < 6
+        ? 'Weak'
+        : password.length < 10
+          ? 'Medium'
+          : 'Strong'
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -44,6 +55,7 @@ function Signup() {
   return (
     <main className="auth-page">
       <div className="auth-card">
+
         <div className="auth-logo">
           <span className="logo-icon">✦</span>
           <span>IntellMeet</span>
@@ -56,7 +68,9 @@ function Signup() {
         </p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
+
           <label htmlFor="name">Full Name</label>
+
           <input
             id="name"
             type="text"
@@ -66,6 +80,7 @@ function Signup() {
           />
 
           <label htmlFor="email">Email</label>
+
           <input
             id="email"
             type="email"
@@ -75,26 +90,60 @@ function Signup() {
           />
 
           <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            placeholder="Create a password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+
+          <div className="password-wrapper">
+
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword((previous) => !previous)}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+
+          </div>
+
+          {passwordStrength && (
+            <p className={`password-strength ${passwordStrength.toLowerCase()}`}>
+              Password strength: <strong>{passwordStrength}</strong>
+            </p>
+          )}
 
           <label htmlFor="confirmPassword">
             Confirm Password
           </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            placeholder="Confirm your password"
-            value={confirmPassword}
-            onChange={(event) =>
-              setConfirmPassword(event.target.value)
-            }
-          />
+
+          <div className="password-wrapper">
+
+            <input
+              id="confirmPassword"
+              type={showConfirmPassword ? 'text' : 'password'}
+              placeholder="Confirm your password"
+              value={confirmPassword}
+              onChange={(event) =>
+                setConfirmPassword(event.target.value)
+              }
+            />
+
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() =>
+                setShowConfirmPassword((previous) => !previous)
+              }
+            >
+              {showConfirmPassword ? 'Hide' : 'Show'}
+            </button>
+
+          </div>
 
           {message && (
             <p className={isSuccess ? 'form-success' : 'form-error'}>
@@ -105,12 +154,14 @@ function Signup() {
           <button type="submit" className="primary-btn">
             Create Account
           </button>
+
         </form>
 
         <p className="auth-footer">
           Already have an account?{' '}
           <Link to="/login">Log in</Link>
         </p>
+
       </div>
     </main>
   )
