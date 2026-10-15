@@ -12,6 +12,7 @@ function Signup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [isSuccess, setIsSuccess] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   const passwordStrength =
     password.length === 0
@@ -22,7 +23,7 @@ function Signup() {
           ? 'Medium'
           : 'Strong'
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     setMessage('')
@@ -48,8 +49,43 @@ function Signup() {
       return
     }
 
-    setMessage('Account details are valid!')
-    setIsSuccess(true)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setMessage(data.message || 'Signup failed.')
+        return
+      }
+
+      setMessage('Account created successfully!')
+      setIsSuccess(true)
+
+      setName('')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+    } catch (error) {
+      console.error('Signup request failed:', error)
+      setMessage(
+        'Unable to connect to the server. Please make sure the backend is running.'
+      )
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -112,7 +148,9 @@ function Signup() {
           </div>
 
           {passwordStrength && (
-            <p className={`password-strength ${passwordStrength.toLowerCase()}`}>
+            <p
+              className={`password-strength ${passwordStrength.toLowerCase()}`}
+            >
               Password strength: <strong>{passwordStrength}</strong>
             </p>
           )}
@@ -151,8 +189,12 @@ function Signup() {
             </p>
           )}
 
-          <button type="submit" className="primary-btn">
-            Create Account
+          <button
+            type="submit"
+            className="primary-btn"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Creating Account...' : 'Create Account'}
           </button>
 
         </form>
