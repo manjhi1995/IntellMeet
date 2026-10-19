@@ -15,7 +15,7 @@ const Message = require('./models/Message')
 const app = express()
 const httpServer = http.createServer(app)
 
-const PORT = 5000
+const PORT = process.env.PORT || 5000
 const CLIENT_URL = 'http://localhost:5173'
 const MAX_PARTICIPANTS = 2
 
