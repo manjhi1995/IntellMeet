@@ -83,12 +83,12 @@ function Dashboard() {
       try {
         const [profileResponse, meetingsResponse] =
           await Promise.all([
-            fetch('http://localhost:5000/api/auth/profile', {
+            fetch('https://intellmeet-backend-8b2l.onrender.com/api/auth/profile', {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
             }),
-            fetch('http://localhost:5000/api/meetings', {
+            fetch('https://intellmeet-backend-8b2l.onrender.com/api/meetings', {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
@@ -201,7 +201,7 @@ function Dashboard() {
 
     try {
       const response = await fetch(
-        'http://localhost:5000/api/meetings',
+        'https://intellmeet-backend-8b2l.onrender.com/api/meetings',
         {
           method: 'POST',
           headers: {

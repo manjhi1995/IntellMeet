@@ -48,7 +48,7 @@ type ApiResponse = {
   actionItems?: ActionItem[]
 }
 
-const API_URL = 'http://localhost:5000'
+const API_URL = 'https://intellmeet-backend-8b2l.onrender.com'
 
 const readResponse = async (
   response: Response
