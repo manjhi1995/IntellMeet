@@ -72,12 +72,13 @@ app.get('/health', (req, res) => {
     status: databaseConnected ? 'ok' : 'error',
     server: 'running',
     database: databaseConnected ? 'connected' : 'disconnected',
-    databaseState: ['disconnected', 'connected', 'connecting', 'disconnecting'][readyState] || 'unknown',
+    databaseState:
+      ['disconnected', 'connected', 'connecting', 'disconnecting'][readyState] ||
+      'unknown',
   })
 })
 
-// Return a readable JSON response for unknown API routes.
-app.use((req, res, next) => {
+app.use((req, res) => {
   res.status(404).json({
     message: 'Route not found.',
     method: req.method,
@@ -85,7 +86,6 @@ app.use((req, res, next) => {
   })
 })
 
-// Return JSON errors instead of Express HTML error pages.
 app.use((err, req, res, next) => {
   if (res.headersSent) {
     next(err)
@@ -106,20 +106,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal server error.' })
 })
 
-const isValidMeetingCode = (code) => {
-  return (
-    typeof code === 'string' &&
-    code.trim().length > 0 &&
-    code.trim().length <= 64
-  )
+// Normalize meeting codes consistently across Socket.IO events.
+const normalizeMeetingCode = (value) => {
+  if (typeof value !== 'string') return ''
+
+  return value.trim().replace(/^CODE/i, '').trim().toLowerCase()
 }
 
-const isValidRoomPayload = (payload, socket) => {
-  return (
-    payload &&
-    typeof payload.room === 'string' &&
-    socket.data.meetingRooms.has(payload.room.trim())
-  )
+const isValidMeetingCode = (code) => {
+  const normalizedCode = normalizeMeetingCode(code)
+
+  return normalizedCode.length > 0 && normalizedCode.length <= 64
+}
+
+const getValidRoomName = (payload, socket) => {
+  const roomName = normalizeMeetingCode(payload?.room)
+
+  if (!roomName || !socket.data.meetingRooms.has(roomName)) {
+    return null
+  }
+
+  return roomName
 }
 
 const isValidSignalDescription = (description) => {
@@ -172,7 +179,7 @@ io.on('connection', (socket) => {
         return
       }
 
-      roomName = meetingCode.trim()
+      roomName = normalizeMeetingCode(meetingCode)
 
       if (socket.data.meetingRooms.has(roomName)) {
         return
@@ -298,38 +305,41 @@ io.on('connection', (socket) => {
   })
 
   socket.on('offer', (payload = {}) => {
-    if (!isValidRoomPayload(payload, socket)) return
-    if (!isValidSignalDescription(payload.offer)) return
+    const roomName = getValidRoomName(payload, socket)
 
-    socket.to(payload.room.trim()).emit('offer', payload.offer)
+    if (!roomName || !isValidSignalDescription(payload.offer)) return
+
+    socket.to(roomName).emit('offer', payload.offer)
   })
 
   socket.on('answer', (payload = {}) => {
-    if (!isValidRoomPayload(payload, socket)) return
-    if (!isValidSignalDescription(payload.answer)) return
+    const roomName = getValidRoomName(payload, socket)
 
-    socket.to(payload.room.trim()).emit('answer', payload.answer)
+    if (!roomName || !isValidSignalDescription(payload.answer)) return
+
+    socket.to(roomName).emit('answer', payload.answer)
   })
 
   socket.on('ice-candidate', (payload = {}) => {
-    if (!isValidRoomPayload(payload, socket)) return
-    if (!isValidIceCandidate(payload.candidate)) return
+    const roomName = getValidRoomName(payload, socket)
 
-    socket.to(payload.room.trim()).emit('ice-candidate', payload.candidate)
+    if (!roomName || !isValidIceCandidate(payload.candidate)) return
+
+    socket.to(roomName).emit('ice-candidate', payload.candidate)
   })
 
   socket.on('chat-message', async (payload = {}) => {
     let savedMessage = null
 
     try {
-      if (!isValidRoomPayload(payload, socket)) {
+      const roomName = getValidRoomName(payload, socket)
+
+      if (!roomName) {
         socket.emit('chat-error', {
           message: 'You must join the meeting before sending messages.',
         })
         return
       }
-
-      const roomName = payload.room.trim()
 
       if (typeof payload.message !== 'string') {
         socket.emit('chat-error', { message: 'Invalid message.' })
@@ -420,7 +430,9 @@ io.on('connection', (socket) => {
     try {
       if (!isValidMeetingCode(meetingCode)) return
 
-      await leaveRoom(socket, meetingCode.trim())
+      const roomName = normalizeMeetingCode(meetingCode)
+
+      await leaveRoom(socket, roomName)
     } catch (error) {
       console.error('Leave room failed:', error.message)
     }
