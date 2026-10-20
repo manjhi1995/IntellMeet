@@ -1,3 +1,4 @@
+
 const express = require('express')
 const crypto = require('crypto')
 const mongoose = require('mongoose')
@@ -6,6 +7,13 @@ const Message = require('../models/Message')
 const protect = require('../middleware/authMiddleware')
 
 const router = express.Router()
+
+// Normalize meeting codes so URLs containing a CODE prefix also work.
+const normalizeMeetingCode = (value) => {
+  if (typeof value !== 'string') return ''
+
+  return value.trim().replace(/^CODE/i, '').trim().toLowerCase()
+}
 
 const getTodayDateInIndia = () => {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -95,9 +103,10 @@ router.get('/', protect, async (req, res) => {
 // Get shared notes and action items.
 router.get('/:meetingCode/collaboration', protect, async (req, res) => {
   try {
-    const meeting = await Meeting.findOne({
-      meetingCode: req.params.meetingCode.trim(),
-    }).select('title meetingCode host status notes actionItems')
+    const meetingCode = normalizeMeetingCode(req.params.meetingCode)
+
+    const meeting = await Meeting.findOne({ meetingCode })
+      .select('title meetingCode host status notes actionItems')
 
     if (!meeting) {
       return res.status(404).json({ message: 'Meeting not found.' })
@@ -123,6 +132,7 @@ router.get('/:meetingCode/collaboration', protect, async (req, res) => {
 // Save shared notes.
 router.put('/:meetingCode/notes', protect, async (req, res) => {
   try {
+    const meetingCode = normalizeMeetingCode(req.params.meetingCode)
     const { notes } = req.body
 
     if (typeof notes !== 'string' || notes.length > 20000) {
@@ -132,7 +142,7 @@ router.put('/:meetingCode/notes', protect, async (req, res) => {
     }
 
     const meeting = await Meeting.findOneAndUpdate(
-      { meetingCode: req.params.meetingCode.trim() },
+      { meetingCode },
       { $set: { notes } },
       { new: true, runValidators: true }
     ).select('meetingCode notes status')
@@ -156,6 +166,7 @@ router.put('/:meetingCode/notes', protect, async (req, res) => {
 // Add an action item.
 router.post('/:meetingCode/action-items', protect, async (req, res) => {
   try {
+    const meetingCode = normalizeMeetingCode(req.params.meetingCode)
     const { title, assignedTo = '', dueDate = null } = req.body
 
     if (
@@ -232,7 +243,7 @@ router.post('/:meetingCode/action-items', protect, async (req, res) => {
     }
 
     const meeting = await Meeting.findOneAndUpdate(
-      { meetingCode: req.params.meetingCode.trim() },
+      { meetingCode },
       { $push: { actionItems: actionItem } },
       { new: true, runValidators: true }
     ).select('meetingCode actionItems')
@@ -259,7 +270,8 @@ router.patch(
   protect,
   async (req, res) => {
     try {
-      const { meetingCode, actionItemId } = req.params
+      const meetingCode = normalizeMeetingCode(req.params.meetingCode)
+      const { actionItemId } = req.params
       const { completed } = req.body
 
       if (!mongoose.isValidObjectId(actionItemId)) {
@@ -274,7 +286,7 @@ router.patch(
 
       const meeting = await Meeting.findOneAndUpdate(
         {
-          meetingCode: meetingCode.trim(),
+          meetingCode,
           'actionItems._id': actionItemId,
         },
         { $set: { 'actionItems.$.completed': completed } },
@@ -306,7 +318,8 @@ router.delete(
   protect,
   async (req, res) => {
     try {
-      const { meetingCode, actionItemId } = req.params
+      const meetingCode = normalizeMeetingCode(req.params.meetingCode)
+      const { actionItemId } = req.params
 
       if (!mongoose.isValidObjectId(actionItemId)) {
         return res.status(400).json({
@@ -316,7 +329,7 @@ router.delete(
 
       const meeting = await Meeting.findOneAndUpdate(
         {
-          meetingCode: meetingCode.trim(),
+          meetingCode,
           'actionItems._id': actionItemId,
         },
         {
@@ -349,7 +362,7 @@ router.delete(
 // Only the authenticated host can officially end a meeting.
 router.post('/:meetingCode/end', protect, async (req, res) => {
   try {
-    const meetingCode = req.params.meetingCode.trim()
+    const meetingCode = normalizeMeetingCode(req.params.meetingCode)
     const meeting = await Meeting.findOne({ meetingCode })
 
     if (!meeting) {
