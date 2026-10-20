@@ -135,6 +135,7 @@ function MeetingRoom() {
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const currentUserIdRef = useRef('')
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+  const isRoomJoinedRef = useRef(false)
 
   const [meetingTitle, setMeetingTitle] = useState('Meeting Room')
   const [status, setStatus] = useState('Connecting...')
@@ -143,6 +144,7 @@ function MeetingRoom() {
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false)
   const [isMicOn, setIsMicOn] = useState(true)
   const [isCameraOn, setIsCameraOn] = useState(true)
+  const [isRoomJoined, setIsRoomJoined] = useState(false)
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -410,7 +412,7 @@ function MeetingRoom() {
         peerConnection.onicecandidate = (event) => {
           if (event.candidate && socket?.connected) {
             socket.emit('ice-candidate', {
-              meetingCode,
+              room: meetingCode,
               candidate: event.candidate,
             })
           }
@@ -472,6 +474,9 @@ function MeetingRoom() {
 
         socket = io(API_URL, {
           auth: { token },
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 1000,
         })
 
         socketRef.current = socket
@@ -479,14 +484,38 @@ function MeetingRoom() {
         socket.on('connect', () => {
           if (!isMounted) return
 
+          isRoomJoinedRef.current = false
+          setIsRoomJoined(false)
+          setChatError('')
+          currentUserIdRef.current = socket?.id || ''
           setStatus('Joining meeting...')
+
+          // The backend expects the meeting code as the join-room argument.
           socket?.emit('join-room', meetingCode)
+        })
+
+        socket.on('disconnect', (reason) => {
+          isRoomJoinedRef.current = false
+
+          if (!isMounted) return
+
+          setIsRoomJoined(false)
+          setStatus('Reconnecting to meeting...')
+
+          if (reason === 'io server disconnect') {
+            setMediaError(
+              'The meeting server disconnected you. Please reload the meeting and try again.'
+            )
+          }
         })
 
         socket.on('connect_error', (error) => {
           console.error('Socket connection failed:', error)
 
+          isRoomJoinedRef.current = false
+
           if (isMounted) {
+            setIsRoomJoined(false)
             setStatus('Signaling connection failed')
             setMediaError(
               'Unable to connect to the meeting server. Check that the backend is running and your session is valid.'
@@ -494,13 +523,22 @@ function MeetingRoom() {
           }
         })
 
-        socket.on('joined-room', () => {
-          if (isMounted) setStatus('Waiting for participant')
+        // The backend sends "room-joined", not "joined-room".
+        socket.on('room-joined', () => {
+          if (!isMounted) return
+
+          isRoomJoinedRef.current = true
+          setIsRoomJoined(true)
+          setStatus('Waiting for participant')
+          setMediaError('')
+          setChatError('')
         })
 
         socket.on('room-full', () => {
           if (!isMounted) return
 
+          isRoomJoinedRef.current = false
+          setIsRoomJoined(false)
           setRoomFull(true)
           setStatus('Meeting full')
           setMediaError(
@@ -509,14 +547,21 @@ function MeetingRoom() {
         })
 
         socket.on('peer-joined', async () => {
-          if (!peerConnection || !socket || !isMounted) return
+          if (
+            !peerConnection ||
+            !socket ||
+            !isMounted ||
+            !isRoomJoinedRef.current
+          ) {
+            return
+          }
 
           try {
             const offer = await peerConnection.createOffer()
             await peerConnection.setLocalDescription(offer)
 
             socket.emit('offer', {
-              meetingCode,
+              room: meetingCode,
               offer,
             })
 
@@ -530,7 +575,14 @@ function MeetingRoom() {
         socket.on(
           'offer',
           async (offer: RTCSessionDescriptionInit) => {
-            if (!peerConnection || !socket || !isMounted) return
+            if (
+              !peerConnection ||
+              !socket ||
+              !isMounted ||
+              !isRoomJoinedRef.current
+            ) {
+              return
+            }
 
             try {
               await peerConnection.setRemoteDescription(
@@ -543,7 +595,7 @@ function MeetingRoom() {
               await peerConnection.setLocalDescription(answer)
 
               socket.emit('answer', {
-                meetingCode,
+                room: meetingCode,
                 answer,
               })
 
@@ -558,7 +610,13 @@ function MeetingRoom() {
         socket.on(
           'answer',
           async (answer: RTCSessionDescriptionInit) => {
-            if (!peerConnection || !isMounted) return
+            if (
+              !peerConnection ||
+              !isMounted ||
+              !isRoomJoinedRef.current
+            ) {
+              return
+            }
 
             try {
               await peerConnection.setRemoteDescription(
@@ -575,7 +633,13 @@ function MeetingRoom() {
         socket.on(
           'ice-candidate',
           async (candidate: RTCIceCandidateInit) => {
-            if (!peerConnection || !isMounted) return
+            if (
+              !peerConnection ||
+              !isMounted ||
+              !isRoomJoinedRef.current
+            ) {
+              return
+            }
 
             if (peerConnection.remoteDescription) {
               try {
@@ -658,6 +722,8 @@ function MeetingRoom() {
         socket.on('meeting-ended', () => {
           if (!isMounted) return
 
+          isRoomJoinedRef.current = false
+          setIsRoomJoined(false)
           setStatus('Meeting ended')
           setChatMessages([])
 
@@ -710,9 +776,13 @@ function MeetingRoom() {
 
     return () => {
       isMounted = false
+      isRoomJoinedRef.current = false
 
       if (socket) {
-        socket.emit('leave-room', meetingCode)
+        if (socket.connected) {
+          socket.emit('leave-room', meetingCode)
+        }
+
         socket.disconnect()
       }
 
@@ -800,16 +870,21 @@ function MeetingRoom() {
 
     const socket = socketRef.current
 
-    if (!socket?.connected) {
-      setChatError('Not connected to the meeting. Please try again.')
+    if (!socket?.connected || !isRoomJoinedRef.current) {
+      setChatError(
+        'You are not connected to the meeting room yet. Please wait for the room to connect.'
+      )
       return
     }
 
     setChatError('')
+
+    // The backend validates payload.room, not payload.meetingCode.
     socket.emit('chat-message', {
-      meetingCode,
+      room: meetingCode,
       message,
     })
+
     setChatInput('')
   }
 
@@ -1097,6 +1172,8 @@ function MeetingRoom() {
   }
 
   const handleLeaveMeeting = () => {
+    isRoomJoinedRef.current = false
+    setIsRoomJoined(false)
     socketRef.current?.emit('leave-room', meetingCode)
     navigate('/dashboard', { replace: true })
   }
@@ -1147,6 +1224,9 @@ function MeetingRoom() {
         setIsEndingMeeting(false)
         return
       }
+
+      isRoomJoinedRef.current = false
+      setIsRoomJoined(false)
 
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
       remoteStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -1697,16 +1777,25 @@ function MeetingRoom() {
                     setChatInput(event.target.value)
                     setChatError('')
                   }}
-                  placeholder="Type a message..."
+                  placeholder={
+                    isRoomJoined
+                      ? 'Type a message...'
+                      : 'Connecting to meeting...'
+                  }
                   maxLength={1000}
                   rows={2}
+                  disabled={!isRoomJoined}
                 />
                 <div className="meeting-chat-form-footer">
-                  <span>Enter a message to share with the room</span>
+                  <span>
+                    {isRoomJoined
+                      ? 'Enter a message to share with the room'
+                      : 'Waiting for room connection'}
+                  </span>
                   <button
                     className="meeting-send-button"
                     type="submit"
-                    disabled={!chatInput.trim()}
+                    disabled={!chatInput.trim() || !isRoomJoined}
                     aria-label="Send message"
                     title="Send message"
                   >
